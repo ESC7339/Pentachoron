@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4D Pyramid (Pentachoron) Visualization</title>
+    <style>
+        body { margin: 0; background: #0a1a2a; color: #fff; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #controls label { margin-right: 5px; }
+        #controls input[type="range"] { width: 150px; }
+        #controls button { margin-top: 10px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div>
+            <label for="rotationSpeedX">Rotation Speed X:</label>
+            <input type="range" id="rotationSpeedX" min="0" max="0.1" step="0.01" value="0.02">
+        </div>
+        <div>
+            <label for="rotationSpeedY">Rotation Speed Y:</label>
+            <input type="range" id="rotationSpeedY" min="0" max="0.1" step="0.01" value="0.02">
+        </div>
+        <div>
+            <label for="rotationSpeedZ">Rotation Speed Z:</label>
+            <input type="range" id="rotationSpeedZ" min="0" max="0.1" step="0.01" value="0.02">
+        </div>
+        <div>
+            <label for="rotationSpeedW">Rotation Speed W:</label>
+            <input type="range" id="rotationSpeedW" min="0" max="0.1" step="0.01" value="0.02">
+        </div>
+        <div>
+            <label for="scale">Scale:</label>
+            <input type="range" id="scale" min="0.5" max="2" step="0.1" value="1">
+        </div>
+        <div>
+            <label for="fifthVertexZ">Fifth Vertex Z:</label>
+            <input type="range" id="fifthVertexZ" min="0" max="2" step="0.1" value="0.5">
+        </div>
+        <div>
+            <label for="colorPhaseSpeed">Color Phase Speed:</label>
+            <input type="range" id="colorPhaseSpeed" min="0" max="0.1" step="0.01" value="0.05">
+        </div>
+        <div>
+            <label for="baseHue">Base Hue (0-360):</label>
+            <input type="range" id="baseHue" min="0" max="360" step="1" value="180">
+        </div>
+        <button id="exportBtn">Export as GIF</button>
+    </div>
+
+    <!-- Three.js for 3D rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <!-- gif.js for GIF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Camera position
+        camera.position.z = 5;
+
+        // Pentachoron vertices in 4D (w, x, y, z)
+        const vertices4D = [
+            [0.5, 0.5, 0.5, 0.5],        // Vertex 0
+            [0.5, -0.5, -0.5, -0.5],     // Vertex 1
+            [-0.5, 0.5, -0.5, -0.5],     // Vertex 2
+            [-0.5, -0.5, 0.5, -0.5],     // Vertex 3
+            [-0.5, -0.5, -0.5, 0.5]      // Vertex 4
+        ];
+
+        // 3D vertices (projected from 4D)
+        const vertices3D = vertices4D.map(v => new THREE.Vector3(v[1], v[2], v[3]));
+
+        // Edges of the pentachoron
+        const edges = [
+            [0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3], // Base tetrahedron
+            [4, 0], [4, 1], [4, 2], [4, 3] // Fifth vertex connections
+        ];
+
+        // Create the wireframe geometry
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(edges.length * 6);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.LineBasicMaterial({ color: 0x00ccff, linewidth: 2 });
+        const lines = new THREE.LineSegments(geometry, material);
+
+        // Group to handle rotation
+        const group = new THREE.Group();
+        group.add(lines);
+        scene.add(group);
+
+        // Grid helper for the floor
+        const grid = new THREE.GridHelper(5, 10, 0x444444, 0x444444);
+        grid.rotation.x = Math.PI / 2;
+        grid.position.z = -0.5;
+        scene.add(grid);
+
+        // Animation variables
+        let rotationSpeedX = 0.02;
+        let rotationSpeedY = 0.02;
+        let rotationSpeedZ = 0.02;
+        let rotationSpeedW = 0.02;
+        let scale = 1;
+        let fifthVertexZ = 0.5;
+        let colorPhaseSpeed = 0.05;
+        let baseHue = 180;
+        let time = 0;
+        let angleXW = 0;
+        let angleYW = 0;
+        let angleZW = 0;
+
+        // Control elements
+        const rotationSpeedXSlider = document.getElementById('rotationSpeedX');
+        const rotationSpeedYSlider = document.getElementById('rotationSpeedY');
+        const rotationSpeedZSlider = document.getElementById('rotationSpeedZ');
+        const rotationSpeedWSlider = document.getElementById('rotationSpeedW');
+        const scaleSlider = document.getElementById('scale');
+        const fifthVertexZSlider = document.getElementById('fifthVertexZ');
+        const colorPhaseSpeedSlider = document.getElementById('colorPhaseSpeed');
+        const baseHueSlider = document.getElementById('baseHue');
+
+        rotationSpeedXSlider.addEventListener('input', () => {
+            rotationSpeedX = parseFloat(rotationSpeedXSlider.value);
+        });
+
+        rotationSpeedYSlider.addEventListener('input', () => {
+            rotationSpeedY = parseFloat(rotationSpeedYSlider.value);
+        });
+
+        rotationSpeedZSlider.addEventListener('input', () => {
+            rotationSpeedZ = parseFloat(rotationSpeedZSlider.value);
+        });
+
+        rotationSpeedWSlider.addEventListener('input', () => {
+            rotationSpeedW = parseFloat(rotationSpeedWSlider.value);
+        });
+
+        scaleSlider.addEventListener('input', () => {
+            scale = parseFloat(scaleSlider.value);
+            group.scale.set(scale, scale, scale);
+        });
+
+        fifthVertexZSlider.addEventListener('input', () => {
+            fifthVertexZ = parseFloat(fifthVertexZSlider.value);
+            vertices4D[4][3] = fifthVertexZ; // Update z-coordinate of fifth vertex
+            updateGeometry();
+        });
+
+        colorPhaseSpeedSlider.addEventListener('input', () => {
+            colorPhaseSpeed = parseFloat(colorPhaseSpeedSlider.value);
+        });
+
+        baseHueSlider.addEventListener('input', () => {
+            baseHue = parseFloat(baseHueSlider.value);
+        });
+
+        // 4D rotation function (rotate in w-x, w-y, w-z planes)
+        function rotate4D(vertices, angleXW, angleYW, angleZW) {
+            const rotated = vertices.map(v => [...v]);
+            for (let i = 0; i < rotated.length; i++) {
+                const v = rotated[i];
+                // w-x plane rotation
+                const w1 = v[0] * Math.cos(angleXW) - v[1] * Math.sin(angleXW);
+                const x1 = v[0] * Math.sin(angleXW) + v[1] * Math.cos(angleXW);
+                v[0] = w1;
+                v[1] = x1;
+
+                // w-y plane rotation
+                const w2 = v[0] * Math.cos(angleYW) - v[2] * Math.sin(angleYW);
+                const y1 = v[0] * Math.sin(angleYW) + v[2] * Math.cos(angleYW);
+                v[0] = w2;
+                v[2] = y1;
+
+                // w-z plane rotation
+                const w3 = v[0] * Math.cos(angleZW) - v[3] * Math.sin(angleZW);
+                const z1 = v[0] * Math.sin(angleZW) + v[3] * Math.cos(angleZW);
+                v[0] = w3;
+                v[3] = z1;
+            }
+            return rotated;
+        }
+
+        // Update geometry after 4D rotation
+        function updateGeometry() {
+            // Project 4D vertices to 3D
+            for (let i = 0; i < vertices4D.length; i++) {
+                vertices3D[i].set(vertices4D[i][1], vertices4D[i][2], vertices4D[i][3]);
+            }
+
+            // Update positions
+            const positionAttribute = geometry.attributes.position;
+            let idx = 0;
+            edges.forEach(edge => {
+                const start = vertices3D[edge[0]];
+                const end = vertices3D[edge[1]];
+                positionAttribute.array[idx++] = start.x;
+                positionAttribute.array[idx++] = start.y;
+                positionAttribute.array[idx++] = start.z;
+                positionAttribute.array[idx++] = end.x;
+                positionAttribute.array[idx++] = end.y;
+                positionAttribute.array[idx++] = end.z;
+            });
+            positionAttribute.needsUpdate = true;
+        }
+
+        // Update line color with phasing effect
+        function updateColor() {
+            time += colorPhaseSpeed;
+            const hue = (baseHue + Math.sin(time) * 60) % 360;
+            const saturation = 100;
+            const lightness = 50;
+            const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            material.color.set(color);
+        }
+
+        // GIF export setup using gif.js
+        const gif = new GIF({
+            workers: 2,
+            quality: 10,
+            workerScript: 'https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js'
+        });
+
+        gif.on('finished', function(blob) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'pentachoron.gif';
+            link.click();
+        });
+
+        let isCapturing = false;
+        const exportBtn = document.getElementById('exportBtn');
+        exportBtn.addEventListener('click', () => {
+            if (!isCapturing) {
+                isCapturing = true;
+                exportBtn.textContent = 'Stop and Download GIF';
+                let frameCount = 0;
+                const captureInterval = setInterval(() => {
+                    renderer.render(scene, camera);
+                    gif.addFrame(renderer.domElement, { delay: 1000 / 30, copy: true });
+                    frameCount++;
+                    if (frameCount >= 150) { // 5 seconds at 30fps
+                        clearInterval(captureInterval);
+                        gif.render();
+                        isCapturing = false;
+                        exportBtn.textContent = 'Export as GIF';
+                    }
+                }, 1000 / 30);
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update 4D rotation angles
+            angleXW += rotationSpeedW;
+            angleYW += rotationSpeedW;
+            angleZW += rotationSpeedW;
+
+            // Apply 4D rotation
+            const rotatedVertices = rotate4D(vertices4D, angleXW, angleYW, angleZW);
+            vertices4D.forEach((v, i) => v.splice(0, 4, ...rotatedVertices[i]));
+
+            // Update geometry
+            updateGeometry();
+
+            // Apply 3D rotations
+            group.rotation.x += rotationSpeedX;
+            group.rotation.y += rotationSpeedY;
+            group.rotation.z += rotationSpeedZ;
+
+            // Update color
+            updateColor();
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start the animation
+        animate();
+    </script>
+</body>
+</html>
